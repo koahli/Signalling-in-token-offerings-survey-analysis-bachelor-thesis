@@ -1,0 +1,632 @@
+---
+title: "Results signalling in token offerings"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  word_document: default
+---
+
+Packages
+```{r}
+#install packages
+#probably not all packages were used
+install.packages("dplyr")    #installation of the %>%
+install.packages("knitr")
+install.packages("lattice")
+install.packages("tidyverse")
+install.packages("likert")
+install.packages("MASS")
+install.packages("psych")
+install.packages("viridis")
+install.packages("ggplot2")
+install.packages("here")
+install.packages("flextable")
+install.packages("devtools")
+devtools::install_github("matherion/userfriendlyscience", dependencies=T)
+# install klippy for copy-to-clipboard button in code chunks
+remotes::install_github("rlesur/klippy")
+install.packages("corrplot")
+install.packages('REdaS')
+install.packages("cowplot")
+install.packages("car")
+install.packages("vcd")
+#installed.packages("psy")
+
+
+# set options
+options(stringsAsFactors = F)         # no automatic data transformation
+options("scipen" = 100, "digits" = 4) # suppress math annotation
+# install packages
+library(dplyr)    # alternatively, this also loads %>%
+library(knitr)
+library(lattice)
+library(tidyverse)
+library(likert)
+library(MASS)
+library(psych)
+library(viridis)
+library(ggplot2)
+library(here)
+library(flextable)
+library(devtools)
+library(userfriendlyscience)
+# activate klippy for copy-to-clipboard button
+klippy::klippy()
+library(corrplot)
+library(REdaS)
+library(cowplot)
+library (car)
+library(psych)
+library(vcd)
+```
+experience contingency table
+When the code does not work, load the libraries. There is a filter function in a default library. This library is used after session restarting (the last loaded is used, if no is loaded then default). The problem can be solved with specifying the intended library.
+```{r}
+ds <- filter(ds, ds$E004 == 'Yes, I have correctly answered all questions. My data can be used for scientific purposes.') #Filter scientific purposes
+#filter entries with -1 at every signal?
+table(ds$I001, ds$I006, exclude = NULL) #report NAs
+ds <- ds %>% filter_at(vars(I001,I006),all_vars(!is.na(.))) #Filter no answers  at investors
+table(ds$I001, ds$I006)
+```
+Make one data set according to the investor group
+```{r}
+ds_inv <- dplyr::filter(ds, ds$I001 == 'Yes') #token offering investors
+ds_no_inv <- filter(ds, ds$I001 == 'No') #no token offering investors
+ds_pre <- filter(ds_inv, ds_inv$I004 == 'Yes') #pre-ICO investors
+ds_no_pre <- filter(ds_inv, ds_inv$I004 == 'No') #no pre-ICO investors
+ds_crypto <- filter(ds, (ds$I001 == 'Yes' | ds$I006 == 'Yes'))#crypto experienced investors
+ds_no_crypto <- filter(ds, (ds$I001 == 'No' | ds$I006 == 'No'))#No crypto experienced investors
+```
+
+Data sets for the signals
+```{r}
+#signals with all investors
+ds_t_sig <- data.frame(ds$I001, ds$TS01_01, ds$TS01_04, ds$TS01_05, ds$TS01_06, ds$TS01_07) #technological signals ds[,20:24] would do the same, would be probably better
+ds_f_sig <- data.frame(ds$I001,ds$FS01_01,ds$FS01_02, ds$FS01_04, ds$FS01_05, ds$FS01_06, ds$FS01_07, ds$FS01_08, ds$FS01_09, ds$FS01_10, ds$FS01_28, ds$FS01_29, ds$FS01_16, ds$FS01_17, ds$FS01_18, ds$FS01_19, ds$FS01_20, ds$FS01_21, ds$FS01_22, ds$FS01_23, ds$FS01_24, ds$FS01_25, ds$FS01_26, ds$FS01_27, ds$FS02_11, ds$FS02_12, ds$FS02_13, ds$FS02_14, ds$FS02_15, ds$FS03_11, ds$FS03_12, ds$FS03_13, ds$FS03_14) #financial signals
+ds_i_sig <- data.frame(ds$I001,ds$IS01_01, ds$IS01_02, ds$IS02_01, ds$IS02_02, ds$IS02_03, ds$IS02_04, ds$IS03_01) #ideological signals
+ds_sig <- ds[,20:63] #all signals (only signals)
+ds_sig_inv <- ds_inv[,20:63]
+```
+
+No offering reasons
+```{r}
+option_no <- c("Never heard about it", "Too risky", "Did not find the right project", "Not interested in investing into token offerings", "No experience in financial investing (like ETFs, shares or bonds)", "No experience in alternative investing (like cryptocurrencies or crowdfunding)", "Other")
+#count true values
+answer_no <- c(sum(ds$I002_01, na.rm = TRUE), sum(ds$I002_02, na.rm = TRUE), sum(ds$I002_03, na.rm = TRUE), sum(ds$I002_04, na.rm = TRUE), sum(ds$I002_06, na.rm = TRUE), sum(ds$I002_07, na.rm = TRUE), sum(ds$I002_05, na.rm = TRUE)) 
+ds_no_answ <- data.frame(option_no, answer_no)
+require(tidyr)
+ds_no_answ.long <- gather(ds_no_answ, variable,value, -option_no)
+#maybe add the percentage within the bar or work just with percentages?, maybe change the color?
+no_inv_barplot <- ggplot(data = ds_no_answ.long, aes(x = reorder(option_no, answer_no), y = value)) + #, fill = variable for color
+  geom_col(position = position_dodge()) +
+  coord_flip() +
+  theme(axis.title.x=element_blank(), #remove axis title
+        axis.title.y=element_blank())
+
+cowplot::save_plot(here("plot", "no_inv_barplot.png"), # where to save the plot
+                   no_inv_barplot,        # object to plot
+                   base_asp = 1.5,  # ratio of space fro questions vs space for plot
+                   base_height = 8) # size! higher for smaller font size
+
+#prepare data for correlation plot
+ds_no_for_cor <- data.frame(ds$I002_01, ds$I002_02, ds$I002_03, ds$I002_04, ds$I002_06, ds$I002_07, ds$I002_05)
+#ds_no_for_cor <- setNames(ds_no_for_cor, option_no) #change names here
+name_list <- list(c("A: Never heard about it", "B: Too risky", "C: Did not find the right project", "D: Not interested in investing into token offerings", "E: No experience in financial investing (like ETFs, shares or bonds)", "F: No experience in alternative investing (like cryptocurrencies or crowdfunding)", "G: Other"), c("A", "B", "C", "D", "E", "F", "G"))
+ds_no_for_cor <- ds_no_for_cor  %>% filter(!is.na(.)) #filters every NA
+no_cor <- cor(ds_no_for_cor)
+no_cor <- structure(no_cor, .Dimnames = name_list)
+#corrplot(no_cor, tl.srt = 45, tl.cex = 0.6) #corrMatrix, degree of text, text size
+
+# correlation plot: draw ellipses + decorations
+corrplot(no_cor, type="upper", method="ellipse",
+         tl.pos="lt", tl.col="black",  tl.offset=1, tl.srt=0, tl.cex = 0.7) #tl.cex = 0.6 -> text size
+# draw labels in black (disabling all the other stuff already drawn)
+corrplot(no_cor, add=T, type="lower", method="number",
+         col="black", diag=F, tl.pos="n", cl.pos="n")
+# if you don't like the lines on the diagonal, (ie diag="n" of corrplot.mixed),
+#  having a look at corrplot.mixed yields the following code:
+n <- nrow(no_cor)
+symbols(1:n, n:1, add=TRUE, bg="white", fg="grey", inches=F, squares=rep(1, n))
+
+#cowplot::save_plot(here("plot", "no_inv_corrplot.png"), # where to save the plot
+ #                  no_inv_corrplot,        # object to plot
+  #                 base_asp = 1.5,  # ratio of space fro questions vs space for plot
+   #                base_height = 8) # size! higher for smaller font size
+
+#plot all answers for other without NAs
+ds$I002_05a[!is.na(ds$I002_05a)]
+
+```
+token offering investor
+```{r}
+#motivation
+motives <- data.frame(ds_inv$I003)
+motives$ds_inv.I003 <- as.character(as.character(motives$ds_inv.I003)) #looks useless but works (otherwise it would display following warning: invalid factor level, NA generated)
+motives[motives == "Technological motives (you are personally enthusiastic about the venture's technology and business model/idea)"] <- 'Technological'
+motives[motives == "Financial motives (you are interested in financial gains and an equity stake in the venture)"] <- 'Financial'
+motives[motives == "Ideological motives (you want to use the token for the intended function, disrupt established structures, sell the token for a higher price or you have social motives)"] <- 'Ideological'
+
+
+ggplot(motives,
+       aes(x=reorder(ds_inv.I003,ds_inv.I003,
+                     function(x) length(x)))) +
+       geom_bar() +
+  coord_flip() +
+  theme(axis.title.x=element_blank(), #remove axis title
+        axis.title.y=element_blank(),
+        axis.text=element_text(size=15))
+
+
+table(ds$I004, ds$I005)
+```
+Correlation motive and pre-ICO / investor type
+```{r}
+#https://stats.stackexchange.com/questions/108007/correlations-with-unordered-categorical-variables 
+ds_inv_cor <- ds_inv[,17:19]
+ds_inv_cor <- ds_inv_cor  %>% filter(!is.na(.)) #filters every NA
+
+assocstats(table(ds_inv_cor$I003, ds_inv_cor$I004))
+
+#myabe the rest is useless
+ds_inv_cor$I003 <- as.character(as.character(ds_inv_cor$I003))
+ds_inv_cor$I004 <- as.character(as.character(ds_inv_cor$I004))
+ds_inv_cor$I005 <- as.character(as.character(ds_inv_cor$I005))
+
+ds_inv_cor[ds_inv_cor == "Technological motives (you are personally enthusiastic about the venture's technology and business model/idea)"] <- 1
+ds_inv_cor[ds_inv_cor == "Financial motives (you are interested in financial gains and an equity stake in the venture)"] <- 2
+ds_inv_cor[ds_inv_cor == "Ideological motives (you want to use the token for the intended function, disrupt established structures, sell the token for a higher price or you have social motives)"] <- 3
+
+ds_inv_cor[ds_inv_cor == "Yes"] <- 1
+ds_inv_cor[ds_inv_cor == "No"] <- 2
+
+ds_inv_cor[ds_inv_cor == "Private"] <- 1
+ds_inv_cor[ds_inv_cor == "Professional"] <- 2
+
+ds_inv_cor$I003 <- as.numeric(as.character(ds_inv_cor$I003))
+ds_inv_cor$I004 <- as.numeric(as.character(ds_inv_cor$I004))
+ds_inv_cor$I005 <- as.numeric(as.character(ds_inv_cor$I005))
+
+cor_inv <- cor(ds_inv_cor)
+```
+
+Found
+```{r}
+#bar plot all options
+option_f <- c("Discord", "Reddit", "Twitter", "Facebook", "LinkedIn", "Telegram", "Bitcointalk", "Instagram", "Niklas personally", "WhatsApp", "Other")
+
+#count true values
+answer_f_no <- c(sum(ds_no_inv$E006_01, na.rm = TRUE), sum(ds_no_inv$E006_02, na.rm = TRUE), sum(ds_no_inv$E006_03, na.rm = TRUE), sum(ds_no_inv$E006_04, na.rm = TRUE), sum(ds_no_inv$E006_05, na.rm = TRUE), sum(ds_no_inv$E006_06, na.rm = TRUE), sum(ds_no_inv$E006_07, na.rm = TRUE), sum(ds_no_inv$E006_08, na.rm = TRUE), sum(ds_no_inv$E006_09, na.rm = TRUE), sum(ds_no_inv$E006_10, na.rm = TRUE), sum(ds_no_inv$E006_11, na.rm = TRUE)) 
+
+answer_f <- c(sum(ds_inv$E006_01, na.rm = TRUE), sum(ds_inv$E006_02, na.rm = TRUE), sum(ds_inv$E006_03, na.rm = TRUE), sum(ds_inv$E006_04, na.rm = TRUE), sum(ds_inv$E006_05, na.rm = TRUE), sum(ds_inv$E006_06, na.rm = TRUE), sum(ds_inv$E006_07, na.rm = TRUE), sum(ds_inv$E006_08, na.rm = TRUE), sum(ds_inv$E006_09, na.rm = TRUE), sum(ds_inv$E006_10, na.rm = TRUE), sum(ds_inv$E006_11, na.rm = TRUE)) 
+
+ds_f <- data.frame(option_f, answer_f, answer_f_no)
+require(tidyr)
+ds_f.long <- gather(ds_f, Group,value, -option_f)
+#maybe add the percentage within the bar or work just with percentages?, maybe change the color?
+ggplot(data = ds_f.long, aes(x = option_f, y = value, fill = Group)) + #x = reorder(option_no, answer_no), y = value
+  geom_col(position = position_dodge()) +
+  coord_flip() +
+  theme(axis.title.x=element_blank(), #remove axis title
+        axis.title.y=element_blank()) +
+  scale_fill_discrete(labels=c('Token offering investor','No token offering investor')) #change label in the legend, maybe change colors with scale_... too?
+
+#try to change the color
+ggplot(data = ds_f.long, aes(x = option_f, y = value, fill = Group)) + #x = reorder(option_no, answer_no), y = value
+  geom_col(position = position_dodge()) +
+  coord_flip() +
+  theme(axis.title.x=element_blank(), #remove axis title
+        axis.title.y=element_blank()) +
+  #scale_fill_discrete(labels=c('Token offering investor','No token offering investor'), values=c("#9933FF", "#33FFFF")) +
+                      scale_fill_manual(labels=c('Token offering investor','No token offering investor'), values=c("#99C000",
+                             "#0083CC"))
+
+#plot all answers for other without NAs
+ds$E006_11a[!is.na(ds$E006_11a)]
+```
+
+
+
+Test H1: Pre-sale investors care less about signals.
+Avg(pre-ICO) < Avg(not-pre-ico)
+```{r}
+#to make a dataframe with only the signals: ds_inv[,20:63] but control indices before!
+lik_pre <- lik_ds(ds_pre[,20:63])
+avg_pre <- mean(lik_pre[,1])
+avg_pre_idk <- mean(lik_pre[,2])
+
+lik_no_pre <- lik_ds(ds_no_pre[,20:63])
+avg_no_pre <- mean(lik_no_pre[,1])
+avg_no_pre_idk <- mean(lik_no_pre[,2])
+
+if(avg_pre < avg_no_pre){
+  print(paste("Because Avg(pre-ICO)", avg_pre, "< Avg(not-pre-ico)", avg_no_pre, "H1 is true --> Pre-sale investors care less about signals."))
+}else{
+  print(paste("Because Avg(pre-ICO)", avg_pre, "> Avg(not-pre-ico)", avg_no_pre, "H1 is false --> Pre-sale investors do not care less about signals."))
+  print(paste("Pre-ICo investors seems to be better educated about token offerings, because they have more often an answer to the questions", "avg_pre_idk:", avg_pre_idk, "avg_no_pre_idk", avg_no_pre_idk))
+}
+
+ds_H1 <- cbind( data.frame(ds_inv$I004), ds_inv[,20:63]) #prepare data for the tests
+ds_H1[ds_H1 == -1] <- NA
+ds_H1 <- filter(ds_H1, is.null(ds_H1$I004))
+
+#Levene test to test for varicance homogenity (for the t-test)
+lvt <- leveneTest(ds_H1[,2] ~ ds_inv.I004, data = ds_H1)
+print(lvt)
+#p value 0.4 -> alternative hypothesis -> different variances
+leveneTestOnDS(ds_H1)
+#because 41 of 44 columns have heterogene variances perform the Welch vesion of the t-test
+
+#t-test
+#replace every -1 with a NA to not bias the average with the -1 entries
+#this results in a smaller effect on the average when a signal has more idk answers, this effect is no problem because a signal with bad oberservability is a bad signal
+#the effect can be compared with the averages above where every signal has the same effect regardless of the idk answers
+pre_NA <- ds_pre[,20:63]
+pre_NA[pre_NA == -1] <- NA #replaces every -1 with a NA
+no_pre_NA <- ds_no_pre[,20:63]
+no_pre_NA[no_pre_NA == -1] <- NA #replaces every -1 with a NA
+t.test(pre_NA, no_pre_NA, "greater")
+```
+Test H2: People who never invested in the crypto context rely more on signals based on external certification.
+Avg(external certification | no-crypto-exp) > Avg(external certification | crypto-exp)
+```{r}
+ds_crypto_ex <- cbind(data.frame(ds_crypto$TS01_04, ds_crypto$TS01_05), ds_crypto[28:35], data.frame(ds_crypto$FS01_26)) #not sure if stages are an external signal #cbind() – combining the columns of two data frames side-by-side
+ds_no_crypto_ex <- cbind(data.frame(ds_no_crypto$TS01_04, ds_no_crypto$TS01_05), ds_no_crypto[28:35], data.frame(ds_no_crypto$FS01_26)) #not sure if stages are an external signal #cbind() – combining the columns of two data frames side-by-side
+lik_crypto_ex <- lik_ds(ds_crypto_ex)
+avg_crypto_ex <- mean(lik_crypto_ex[,1])
+
+lik_no_crypto_ex <- lik_ds(ds_no_crypto_ex)
+avg_no_crypto_ex <- mean(lik_no_crypto_ex[,1])
+
+#prepare data for the tests
+exp <- rep('Yes', times = nrow(ds_crypto_ex))
+ds_H2_ex <- cbind(exp, ds_crypto_ex)
+
+no_exp <- rep('No', times = nrow(ds_no_crypto_ex))
+ds_H2_no_ex <- cbind(no_exp, ds_no_crypto_ex)
+
+#rename column names before using rbind
+colnames(ds_H2_ex) <- 1:ncol(ds_H2_ex) #gives the columns names from 1 to n
+colnames(ds_H2_no_ex) <- 1:ncol(ds_H2_ex) #gives the columns names from 1 to n
+ds_H2 <- rbind(ds_H2_ex, ds_H2_no_ex)
+
+ds_H2[ds_H2 == -1] <- NA #replaces every -1 with a NA
+ds_no_crypto_ex[ds_no_crypto_ex == -1] <- NA
+ds_crypto_ex[ds_crypto_ex == -1] <- NA
+
+leveneTestOnDS(ds_H2)
+#all columns different variances, if -1 is not replaced then only one column
+
+t.test(ds_no_crypto_ex, ds_crypto_ex,  alternative = "greater")
+t.test(ds_crypto_ex, ds_no_crypto_ex,  alternative = "greater")
+```
+
+Test H3: There is a different valuation of signals, depending on the investors group.
+Avg(financial signals | financial motivated) >  Avg(financial signals | not financial motivated) and so on
+Additionally: factor analysis
+```{r}
+ds_t_inv <- filter(ds, ds$I003 == "Technological motives (you are personally enthusiastic about the venture's technology and business model/idea)") #technological motivated investors
+ds_f_inv <- filter(ds_inv, ds_inv$I003 == "Financial motives (you are interested in financial gains and an equity stake in the venture)")#financial motivated investors
+ds_i_inv <- filter(ds_inv, ds_inv$I003 == "Ideological motives (you want to use the token for the intended function, disrupt established structures, sell the token for a higher price or you have social motives)")#ideological motivated investors
+ds_no_t_inv <- filter(ds, ds$I003 != "Technological motives (you are personally enthusiastic about the venture's technology and business model/idea)") #no technological motivated investors
+ds_no_f_inv <- filter(ds_inv, ds_inv$I003 != "Financial motives (you are interested in financial gains and an equity stake in the venture)")#no financial motivated investors
+ds_no_i_inv <- filter(ds_inv, ds_inv$I003 != "Ideological motives (you want to use the token for the intended function, disrupt established structures, sell the token for a higher price or you have social motives)")#no ideological motivated investors
+
+lik_t_inv <- lik_ds(ds_t_inv[,20:24])
+lik_f_inv <- lik_ds(ds_f_inv[25:56])
+lik_i_inv <- lik_ds(ds_i_inv[57:63])
+lik_no_t_inv <- lik_ds(ds_no_t_inv[,20:24])
+lik_no_f_inv <- lik_ds(ds_no_f_inv[25:56])
+lik_no_i_inv <- lik_ds(ds_no_i_inv[57:63])
+
+avg_t_inv <- mean(lik_t_inv[,1])
+avg_f_inv <- mean(lik_f_inv[,1])
+avg_i_inv <- mean(lik_i_inv[,1])
+avg_no_t_inv <- mean(lik_no_t_inv[,1])
+avg_no_f_inv <- mean(lik_no_f_inv[,1])
+avg_no_i_inv <- mean(lik_no_i_inv[,1])
+
+#test again without "A whitepaper is published" as the existence of a whitepaper should not be a signal
+#and maybe sum the country in one variable as it controls for one signal, so it is not over proportional in the average
+#same for factor analysis?
+#do the factor analysis one time with the whole data set and one time with token offering investors?
+lik_t_inv_w <- lik_ds(cbind(ds_t_inv[,20:22], data.frame(ds_t_inv$TS01_07)))
+avg_t_inv_w <- mean(lik_t_inv_w[,1])
+lik_no_t_inv_w <- lik_ds(cbind(ds_no_t_inv[,20:22], data.frame(ds_no_t_inv$TS01_07)))
+avg_no_t_inv_w <- mean(lik_no_t_inv_w[,1])
+#result stays the same
+
+#technological
+#Levene
+ds_H3_t <- combine_ds_before_levene(ds_t_inv[,20:24], ds_no_t_inv[,20:24])
+leveneTestOnDS(ds_H3_t$result) #5 -> heterogeneous variance
+
+#t-tests
+t.test(ds_H3_t$ds1, ds_H3_t$ds2, alternative = "greater")
+t.test(ds_H3_t$ds2, ds_H3_t$ds1, alternative = "greater")
+
+#financial
+ds_H3_f <- combine_ds_before_levene(ds_f_inv[25:56], ds_no_f_inv[25:56])
+leveneTestOnDS(ds_H3_f$result) #28 -> 
+t.test(ds_H3_f$ds1, ds_H3_f$ds2, alternative = "greater")
+
+#ideological
+ds_H3_i <- combine_ds_before_levene(ds_i_inv[25:56], ds_no_i_inv[25:56])
+leveneTestOnDS(ds_H3_i$result) #27 -> heterogeneous variance
+t.test(ds_H3_i$ds1, ds_H3_i$ds2, alternative = "greater")
+
+KMOS(ds_sig)
+cortest.bartlett(ds_sig) #p.value 0 --> Items correlate significantly
+
+nfactors(ds_sig, rotate="varimax", fm="mle") #typically look at map test
+
+fafitfree <- fa(ds_sig, nfactors = ncol(ds_sig[,-c(44)]), rotate = "none")
+n_factors <- length(fafitfree$e.values)
+
+scree <- data.frame(
+     Factor_n =  as.factor(1:n_factors), 
+     Eigenvalue = fafitfree$e.values)
+ggplot(scree, aes(x = Factor_n, y = Eigenvalue, group = 1)) + 
+     geom_point() + geom_line() +
+     xlab("Number of factors") +
+     ylab("Initial eigenvalue") +
+     labs( title = "Scree Plot", 
+           subtitle = "(Based on the unreduced correlation matrix)")
+
+
+#parallel analysis
+#ev <- eigen(cor(ds_sig))
+#op <- parallelplot(subject=nrow(ds_sig), var = ncol(ds_sig), rep = 100, cent = .05)
+#nS <- nScreen(x= ev$values, aparallel)
+
+factanal(ds_sig, 9, rotatoin="varimax")
+
+
+#for investors
+KMOS(ds_sig_inv)
+cortest.bartlett(ds_sig_inv) #p.value 3.445e-225 --> Items correlate significantly
+
+fafitfree <- fa(ds_sig_inv, nfactors = ncol(ds_sig_inv[,-c(44)]), rotate = "none")
+n_factors <- length(fafitfree$e.values)
+scree     <- data.frame(
+  Factor_n =  as.factor(1:n_factors), 
+  Eigenvalue = fafitfree$e.values)
+ggplot(scree, aes(x = Factor_n, y = Eigenvalue, group = 1)) + 
+  geom_point() + geom_line() +
+  xlab("Number of factors") +
+  ylab("Initial eigenvalue") +
+  labs( title = "Scree Plot", 
+        subtitle = "(Based on the unreduced correlation matrix)")
+
+nfactors(ds_sig_inv, rotate="varimax", fm="mle") #typically look at map test
+fa <- factanal(ds_sig_inv, 4, rotatoin="varimax")
+fa
+
+
+
+```
+H4: Technological signals are rated higher than non-technological signals.
+```{r}
+lik_inv_tech <- lik_ds(ds_inv[,20:24])
+lik_inv_no_tech <- lik_ds(ds_inv[,25:63])
+avg_inv_tech <- mean(lik_inv_tech[,1])
+avg_inv_no_tech <- mean(lik_inv_no_tech[,1])
+
+lik_no_inv_tech <- lik_ds(ds_no_inv[,20:24])
+lik_no_inv_no_tech <- lik_ds(ds_no_inv[,25:63])
+avg_no_inv_tech <- mean(lik_no_inv_tech[,1])
+avg_no_inv_no_tech <- mean(lik_no_inv_no_tech[,1])
+#--> H4 true
+
+#because different variables no Levene test possible (and somewhat useless)
+H4_1 <- ds_inv[,20:24]
+H4_1[H4_1 == -1] <- NA #replaces every -1 with a NA
+
+H4_2 <- ds_inv[,25:63]
+H4_2[H4_2 == -1] <- NA #replaces every -1 with a NA
+t.test(H4_1, H4_2, alternative = "greater")
+
+#Test again without Whitepaper
+H4_1_w <- cbind(ds_t_inv[,20:22], data.frame(ds_t_inv$TS01_07))
+lik_inv_tech_w <- lik_ds(H4_1_w)
+H4_1_w[H4_1_w == -1] <- NA #replaces every -1 with a NA
+t.test(H4_1_w, H4_2, alternative = "greater")
+```
+H5: Technological and ideological motivated investors value open-source code as positive while financial motivated investors assess code on GitHub as negative.
+```{r}
+print(lik_avg_idk(ds_t_inv[,20]))
+print(lik_avg_idk(ds_i_inv[,20]))
+print(lik_avg_idk(ds_f_inv[,20]))
+#--> H5 false
+
+#maybe financial motivated investors believe that the code is fine and it is no scam when the code is public and for investors with programming expertise is public code per se not a signal just the code quality??? --> avenue for further research?
+```
+
+
+Signals Likert
+```{r}
+lbs <- c("Strongly against investment", "Against investment", "Neutral",  "Pro investment", "Strongly pro investment") #labels
+#see https://jakec007.github.io/assets/files/2021-06-23-R-likert.pdf page 6 and the following
+
+#mean and idk
+lik_inv <- lik_ds(ds_inv[,20:63])
+lik_no_inv <- lik_ds(ds_no_inv[,20:63])
+
+lik_inv <- round(lik_inv, 2)
+lik_no_inv <- round(lik_no_inv, 2)
+
+t_inv <- compare_with_3(ds_inv[,20:63])
+t_no_inv <- compare_with_3(ds_no_inv[,20:63])
+
+#Technological signals
+#No investor first
+T1n <- paste('Ta: The code is hosted publicly on GitHub', 'Mean (No / Yes):', lik_no_inv[1,1], t_no_inv[1,5], '/',  lik_inv[1,1], t_inv[1,5], "I don't know / not specified (Idk) (No / Yes):", lik_no_inv[1,2], '/', lik_inv[1,2])
+T2n <- paste("Tb: Professional security audit when the source code is public", 'Mean:', lik_no_inv[2,1], t_no_inv[2,5], '/',  lik_inv[2,1], t_inv[2,5], "Idk:", lik_no_inv[2,2], '/', lik_inv[2,2])
+T3n <- paste("Tc: Professional security audit when the source code is private", 'Mean:', lik_no_inv[3,1], t_no_inv[3,5], '/',  lik_inv[3,1], t_inv[3,5], "Idk:", lik_no_inv[3,2], '/', lik_inv[3,2])
+T4n <- paste("Td: A whitepaper is published", 'Mean:', lik_no_inv[4,1], t_no_inv[4,5], '/',  lik_inv[4,1], t_inv[4,5], "Idk:", lik_no_inv[4,2], '/', lik_inv[4,2])
+T5n <- paste("Te: The whitepaper provides technically detailed but precise and understandable information", 'Mean:', lik_no_inv[5,1], t_no_inv[5,5], '/',  lik_inv[5,1], t_inv[5,5], "Idk:", lik_no_inv[5,2], '/', lik_inv[5,2] )
+
+colnames(ds_t_sig) <- c('Investor group', T1n, T2n, T3n, T4n, T5n) #colnames need every colum name to be renamed but accepts variables (rename does not accept variables)
+
+likert_t_sig <- ds_t_sig %>%
+  dplyr::mutate_if(is.character, factor) %>%
+  dplyr::mutate_if(is.numeric, factor, levels = 1:5, labels = lbs) %>%
+  #drop_na() %>% #drops IDK?
+  as.data.frame()
+
+likert_plot_t_sig <- plot(likert(likert_t_sig[,2:6], grouping = likert_t_sig[,1])) #grouped by investor group
+
+cowplot::save_plot(here("plot", "likert_plot_t_sig.png"), # where to save the plot
+                   likert_plot_t_sig,        # object to plot
+                   base_asp = 1.5,  # ratio of space fro questions vs space for plot
+                   base_height = 6) # size! higher for smaller font size
+
+#those naming rows should be refactored!!!
+#Financial signals
+F1n <- paste('Fa: No soft cap', 'Mean (No / Yes):', lik_no_inv[6,1], t_no_inv[6,5], '/',  lik_inv[6,1], t_inv[6,5], "I don't know / not specified (Idk) (No / Yes):", lik_no_inv[6,2], '/', lik_inv[6,2])
+F2n <- paste("Fb: No hard cap", 'Mean:', lik_no_inv[7,1], t_no_inv[7,5], '/',  lik_inv[7,1], t_inv[7,5], "Idk:", lik_no_inv[7,2], '/', lik_inv[7,2])
+F3n <- paste("Fc:  The team has diverse knowledge", 'Mean:', lik_no_inv[8,1], t_no_inv[8,5], '/',  lik_inv[8,1], t_inv[8,5], "Idk:", lik_no_inv[8,2], '/', lik_inv[8,2])
+F4n <- paste("Fd: The venture has an advisory board", 'Mean:', lik_no_inv[9,1], t_no_inv[9,5], '/',  lik_inv[9,1], t_inv[9,5], "Idk:", lik_no_inv[9,2], '/', lik_inv[9,2])
+F5n <- paste("Fe: The venture is backed by a venture capitalist", 'Mean:', lik_no_inv[10,1], t_no_inv[10,5],  '/',  lik_inv[10,1], t_inv[10,5], "Idk:", lik_no_inv[10,2], '/', lik_inv[10,2])
+F6n <- paste("Ff: The venture is backed by a corporate venture capitalist", 'Mean:', lik_no_inv[11,1], t_no_inv[11,5], '/',  lik_inv[11,1], t_inv[11,5], "Idk:", lik_no_inv[11,2], '/', lik_inv[11,2])
+F7n <- paste("Fg: The venture is backed by a venture capitalist with experience in the blockchain sector", 'Mean:', lik_no_inv[12,1], t_no_inv[12,5], '/',  lik_inv[12,1], t_inv[12,5], "Idk:", lik_no_inv[12,2], '/', lik_inv[12,2])
+F8n <- paste("Fh: The venture is backed by a venture capitalist whose tokens are locked up", 'Mean:', lik_no_inv[13,1], t_no_inv[13,5], '/',  lik_inv[13,1], t_inv[13,5], "Idk:", lik_no_inv[13,2], '/', lik_inv[13,2])
+F9n <- paste("Fi: The venture has a high expert team rating", 'Mean:', lik_no_inv[14,1], t_no_inv[14,5],  '/',  lik_inv[14,1], t_inv[14,5], "Idk:", lik_no_inv[14,2], '/', lik_inv[14,2])
+F10n <- paste("Fj: The venture has a high expert vision rating", 'Mean:', lik_no_inv[15,1], t_no_inv[15,5], '/',  lik_inv[15,1], t_inv[15,5], "Idk:", lik_no_inv[15,2], '/', lik_inv[15,2])
+F11n <- paste("Fk: The venture has a high expert product rating", 'Mean:', lik_no_inv[16,1], t_no_inv[16,5],  '/',  lik_inv[16,1], t_inv[16,5], "Idk:", lik_no_inv[16,2], '/', lik_inv[16,2])
+F12n <- paste("Fl:  The offering period is short", 'Mean:', lik_no_inv[17,1], t_no_inv[17,5], '/',  lik_inv[17,1], t_inv[17,5], "Idk:", lik_no_inv[17,2], '/', lik_inv[17,2])
+F13n <- paste("Fm:  The website provides plenty of crypto related information", 'Mean:', lik_no_inv[18,1], t_no_inv[18,5], '/',  lik_inv[18,1], t_inv[18,5], "Idk:", lik_no_inv[18,2], '/', lik_inv[18,2])
+F14n <- paste("Fn: The venture is highly active on Twitter", 'Mean:', lik_no_inv[19,1], t_no_inv[19,5], '/',  lik_inv[19,1], t_inv[19,5], "Idk:", lik_no_inv[19,2], '/', lik_inv[19,2])
+F15n <- paste("Fo: A pre-sale was conducted before the token offering", 'Mean:', lik_no_inv[20,1], t_no_inv[20,5], '/',  lik_inv[20,1], t_inv[20,5], "Idk:", lik_no_inv[20,2], '/', lik_inv[20,2])
+F16n <- paste("Fp: The venture offers a small share of tokens to investors", 'Mean:', lik_no_inv[21,1], t_no_inv[21,5], '/',  lik_inv[21,1], t_inv[21,5], "Idk:", lik_no_inv[21,2], '/', lik_inv[21,2])
+F17n <- paste("Fq:  Incentive pool for employees", 'Mean:', lik_no_inv[22,1], t_no_inv[22,5], '/',  lik_inv[22,1], t_inv[22,5], "Idk:", lik_no_inv[22,2], '/', lik_inv[22,2])
+F18n <- paste("Fr:  Lock up for team and founders", 'Mean:', lik_no_inv[23,1], t_no_inv[23,5], '/',  lik_inv[23,1], t_inv[23,5], "Idk:", lik_no_inv[23,2], '/', lik_inv[23,2])
+F19n <- paste("Fs: Disclosed budget use plan", 'Mean:', lik_no_inv[24,1], t_no_inv[24,5], '/',  lik_inv[24,1], t_inv[24,5], "Idk:", lik_no_inv[24,2], '/', lik_inv[24,2])
+F20n <- paste("Ft:  Milestone plan for fund release", 'Mean:', lik_no_inv[25,1], t_no_inv[25,5], '/',  lik_inv[25,1], t_inv[25,5], "Idk:", lik_no_inv[25,2], '/', lik_inv[25,2])
+F21n <- paste("Fu: Funds are stored in a wallet which enables access only if multiple people work together", 'Mean:', lik_no_inv[26,1], t_no_inv[26,5], '/',  lik_inv[26,1], t_inv[26,5], "Idk:", lik_no_inv[26,2], '/', lik_inv[26,2])
+F22n <- paste("Fv:  The funds are managed by an independent custodian", 'Mean:', lik_no_inv[27,1], t_no_inv[27,5],  '/',  lik_inv[27,1], t_inv[27,5], "Idk:", lik_no_inv[27,2], '/', lik_inv[27,2])
+F23n <- paste("Fw:  The tokens are offered in stages", 'Mean:', lik_no_inv[28,1], t_no_inv[28,5], '/',  lik_inv[28,1], t_inv[28,5], "Idk:", lik_no_inv[28,2], '/', lik_inv[28,2])
+
+#country:
+F24n <- paste("Fca: United States of America", 'Mean:', lik_no_inv[29,1], t_no_inv[29,5], '/',  lik_inv[29,1], t_inv[29,5], "Idk:", lik_no_inv[29,2], '/', lik_inv[29,2])
+F25n <- paste("Fcb: Singapore", 'Mean:', lik_no_inv[30,1], t_no_inv[30,5], '/',  lik_inv[30,1], t_inv[30,5], "Idk:", lik_no_inv[30,2], '/', lik_inv[30,2])
+F26n <- paste("Fcc: United Kingdom", 'Mean:', lik_no_inv[31,1], t_no_inv[31,5], '/',  lik_inv[31,1], t_inv[31,5], "Idk:", lik_no_inv[31,2], '/', lik_inv[31,2])
+F27n <- paste("Fcd: Russia", 'Mean:', lik_no_inv[32,1], t_no_inv[32,5],  '/',  lik_inv[32,1], t_inv[32,5], "Idk:", lik_no_inv[32,2], '/', lik_inv[32,2])
+F28n <- paste("Fce: Switzerland", 'Mean:', lik_no_inv[33,1], t_no_inv[33,5],  '/',  lik_inv[33,1], t_inv[33,5], "Idk:", lik_no_inv[33,2], '/', lik_inv[33,2])
+#Experience
+F29n <- paste("Fea: Managerial experience as a top manager", 'Mean:', lik_no_inv[34,1], t_no_inv[34,5], '/',  lik_inv[34,1], t_inv[34,5], "Idk:", lik_no_inv[34,2], '/', lik_inv[34,2])
+F30n <- paste("Feb: Entrepreneurial experience", 'Mean:', lik_no_inv[35,1], t_no_inv[35,5], '/',  lik_inv[35,1], t_inv[35,5], "Idk:", lik_no_inv[35,2], '/', lik_inv[35,2])
+F31n <- paste("Fec: Technical experience", 'Mean:', lik_no_inv[36,1], t_no_inv[36,5], '/',  lik_inv[36,1], t_inv[36,5], "Idk:", lik_no_inv[36,2], '/', lik_inv[36,2])
+F32n <- paste("Fed: Holds a Ph.D", 'Mean:', lik_no_inv[37,1], t_no_inv[37,5], '/',  lik_inv[37,1], t_inv[37,5], "Idk:", lik_no_inv[37,2], '/', lik_inv[37,2])
+
+colnames(ds_f_sig) <- c('Investor group', F1n, F2n, F3n, F4n, F5n, F6n, F7n, F8n, F9n, F10n, F11n, F12n, F13n, F14n, F15n, F16n, F17n, F18n, F19n, F20n, F21n, F22n, F23n, F24n, F25n, F26n, F27n, F28n, F29n, F30n, F31n, F32n)
+
+likert_f_sig <- ds_f_sig[,1:33] %>%
+  dplyr::mutate_if(is.character, factor) %>%
+  dplyr::mutate_if(is.numeric, factor, levels = 1:5, labels = lbs) %>%
+  #drop_na() %>% #drops IDK?
+  as.data.frame()
+
+likert_plot_f_sig <- plot(likert(likert_f_sig[,2:24], grouping = likert_f_sig[,1])) #grouped by investor group
+
+#cowplot::save_plot(here("plot", "likert_plot_f_sig.png"), # where to save the plot
+ #                  likert_plot_f_sig,        # object to plot
+  #                 base_asp = 1.5,  # ratio of space fro questions vs space for plot
+   #                base_height = 6) # size! higher for smaller font size
+
+likert_plot_country <- plot(likert(likert_f_sig[,25:29], grouping = likert_f_sig[,1])) #grouped by investor group
+
+cowplot::save_plot(here("plot", "likert_plot_country.png"), # where to save the plot
+                   likert_plot_country,        # object to plot
+                   base_asp = 1.5,  # ratio of space fro questions vs space for plot
+                   base_height = 6) # size! higher for smaller font size
+
+likert_plot_founder_exp <- plot(likert(likert_f_sig[,30:33], grouping = likert_f_sig[,1])) #grouped by investor group
+
+cowplot::save_plot(here("plot", "likert_plot_founder_exp.png"), # where to save the plot
+                   likert_plot_founder_exp,        # object to plot
+                   base_asp = 1.5,  # ratio of space fro questions vs space for plot
+                   base_height = 6) # size! higher for smaller font size
+
+
+#ideological signals
+I1n <- paste("Ia: The token is based on the Ethereum blockchain", 'Mean:', lik_no_inv[38,1], t_no_inv[38,5], '/',  lik_inv[38,1], t_inv[38,5], "Idk:", lik_no_inv[38,2], '/', lik_inv[38,2])
+I2n <- paste("Ib: The token offers voting rights", 'Mean:', lik_no_inv[39,1], t_no_inv[39,5], '/',  lik_inv[39,1], t_inv[39,5], "Idk:", lik_no_inv[39,2], '/', lik_inv[39,2])
+I3n <- paste("Ic: A smart contract custodian which transacts money to the venture with a pre-defined function", 'Mean:', lik_no_inv[40,1], t_no_inv[40,5], '/',  lik_inv[40,1], t_inv[40,5], "Idk:", lik_no_inv[40,2], '/', lik_inv[40,2])
+I4n <- paste("Id: A smart contract custodian which transacts money to the venture with a pre-defined function,
+at a certain event or milestone after the offering", 'Mean:', lik_no_inv[41,1], t_no_inv[41,5], '/',  lik_inv[41,1], t_inv[41,5], "Idk:", lik_no_inv[41,2], '/', lik_inv[41,2])
+I5n <- paste("Ie: A smart contract custodian which transacts money to the venture with a pre-defined function,
+at a certain event or milestone with a voting right according to the events after the offering", 'Mean:', lik_no_inv[42,1], t_no_inv[42,5], '/',  lik_inv[42,1], t_inv[42,5], "Idk:", lik_no_inv[42,2], '/', lik_inv[42,2])
+I6n <- paste("If: Token holders can vote on a liquidation and get the locked money back", 'Mean:', lik_no_inv[43,1], t_no_inv[43,5], '/',  lik_inv[43,1], t_inv[43,5], "Idk:", lik_no_inv[43,2], '/', lik_inv[43,2])
+I7n <- paste("Ig: Providing liquidity through a token pair on Uniswap", 'Mean:', lik_no_inv[44,1], t_no_inv[44,5], '/',  lik_inv[44,1], t_inv[44,5], "Idk:", lik_no_inv[44,2], '/', lik_inv[44,2])
+
+colnames(ds_i_sig) <- c('Investor group', I1n, I2n, I3n, I4n, I5n, I6n, I7n)
+
+likert_i_sig <- ds_i_sig %>%
+  dplyr::mutate_if(is.character, factor) %>%
+  dplyr::mutate_if(is.numeric, factor, levels = 1:5, labels = lbs) %>%
+  #drop_na() %>% #drops IDK?
+  as.data.frame()
+
+likert_plot_i_sig <- plot(likert(likert_i_sig[,2:8], grouping = likert_f_sig[,1])) #grouped by investor group
+
+cowplot::save_plot(here("plot", "likert_plot_i_sig.png"), # where to save the plot
+                   likert_plot_i_sig,        # object to plot
+                   base_asp = 1.5,  # ratio of space fro questions vs space for plot
+                   base_height = 6) # size! higher for smaller font size
+
+
+```
+
+t-tests for H7, H17, H18, H23
+```{r}
+H7 <- data.frame(ds_inv$TS01_01, ds_inv$TS01_05)
+H7[H7 == -1] <- NA #replaces every -1 with a NA
+t.test(H7[,2], H7[,1], alternative = "greater")
+
+H17a <- data.frame(ds_inv$FS01_08, ds_inv$FS01_06)
+H17a[H17a == -1] <- NA #replaces every -1 with a NA
+t.test(H17a[,1], H17a[,2], alternative = "greater")
+
+H17b <- data.frame(ds_no_inv$FS01_08, ds_no_inv$FS01_06)
+H17b[H17b == -1] <- NA #replaces every -1 with a NA
+t.test(H17b[,1], H17b[,2], alternative = "greater")
+
+H18a <- data.frame(ds_inv$FS01_09, ds_inv$FS01_06)
+H18a[H18a == -1] <- NA #replaces every -1 with a NA
+t.test(H18a[,1], H18a[,2], alternative = "greater")
+
+H18b <- data.frame(ds_no_inv$FS01_09, ds_no_inv$FS01_06)
+H18b[H18b == -1] <- NA #replaces every -1 with a NA
+t.test(H18b[,1], H18b[,2], alternative = "greater")
+
+H23a <- data.frame(ds_inv$FS02_15, ds_inv$FS02_11)
+H23a[H23a == -1] <- NA #replaces every -1 with a NA
+t.test(H23a[,1], H23a[,2], alternative = "greater")
+
+H23b <- data.frame(ds_no_inv$FS02_15, ds_no_inv$FS02_11)
+H23b[H23b == -1] <- NA #replaces every -1 with a NA
+t.test(H23b[,1], H23b[,2], alternative = "greater")
+
+```
+
+Factor analysis
+n SPSS a convenient option is offered to check whether the sample is big enough: the 
+Kaiser-Meyer-Olkin measure of sampling adequacy (KMO-test). The sample is adequate if 
+the value of KMO is greater than 0.5. Furthermore, SPSS can calculate an anti-image matrix 
+of covariances and correlations. All elements on the diagonal of this matrix should be greater 
+than 0.5 if the sample is adequate (Field 2000: 446)
+```{r}
+KMOS(ds_sig)
+```
+
+Free text critic
+```{r}
+ds$E003_01[!is.na(ds$E003_01)]
+```
+
+Session info to reproduce
+```{r}
+sessionInfo()
+```
+
